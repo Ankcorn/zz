@@ -2,7 +2,7 @@
 # Test harness for zz - ported from coreutils dd test suite
 set -euo pipefail
 
-ZZ="$HOME/zz/zig-out/bin/zz"
+ZZ="${ZZ:-$(realpath "$(dirname "$0")")/zig-out/bin/zz}"
 TMPDIR=$(mktemp -d /tmp/zz-tests.XXXXXX)
 trap 'rm -rf "$TMPDIR"' EXIT
 

@@ -4,7 +4,7 @@
 # Requires: losetup, sfdisk, mkfs.vfat, mkfs.ext4, sudo
 set -euo pipefail
 
-ZZ="${ZZ:-$(dirname "$0")/zig-out/bin/zz}"
+ZZ="${ZZ:-$(realpath "$(dirname "$0")")/zig-out/bin/zz}"
 IMG="$(mktemp /tmp/zz-disk-XXXXXX.img)"
 MNT_ROOT="$(mktemp -d /tmp/zz-mnt-XXXXXX)"
 LOOP=""
