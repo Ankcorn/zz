@@ -37,3 +37,18 @@ Ported from the coreutils dd test suite: `bytes.sh`, `misc.sh`, `skip-seek.pl`, 
 ```
 Results: 55 passed, 0 failed, 0 skipped
 ```
+
+## Real hardware results
+
+Tested on a Raspberry Pi against a 58GB microSD card (`/dev/mmcblk0`).
+
+| Test | Result |
+|---|---|
+| MBR read (512 bytes, raw device) | ✅ Valid `55 aa` signature |
+| 1MB raw read vs dd | ✅ Byte-identical |
+| 100MB sequential read | ✅ Matches dd throughput (~87 MB/s) |
+| `/etc/passwd` file copy | ✅ Identical |
+| Binary (`/usr/bin/ls`) copy | ✅ Identical |
+| Partial read (`skip=2 count=4 bs=64`) | ✅ Identical output and stats |
+| 10MB partition image vs dd | ✅ Same SHA256 |
+| Round-trip copy at `bs=4096` | ✅ 2560+0 records, identical |
