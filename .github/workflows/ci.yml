@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.14.0
+
+      - name: Build
+        run: zig build
+
+      - name: Unit tests (coreutils dd test suite)
+        run: bash run_tests.sh
+
+  hardware-sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.14.0
+
+      - name: Install deps
+        run: sudo apt-get install -y dosfstools e2fsprogs
+
+      - name: Build
+        run: zig build
+
+      - name: Hardware simulation tests (loop device)
+        run: bash run_hw_tests.sh
