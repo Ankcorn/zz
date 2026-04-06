@@ -430,6 +430,8 @@ pub fn main() !void {
         try stderr_writer.writeAll("zz: warning: '0x' is a zero multiplier; use '00x' if that is intended\n");
     }
 
+    const start_time = std.time.nanoTimestamp();
+
     const ibs: u64 = if (params.bs) |b| b else params.ibs;
     const obs: u64 = if (params.bs) |b| b else params.obs;
     const reblock = (params.bs == null);
@@ -760,9 +762,69 @@ pub fn main() !void {
             });
         }
         if (params.status != .noxfer) {
-            try stderr_writer.print("{d} bytes copied\n", .{stats.bytes});
+            const elapsed_ns = std.time.nanoTimestamp() - start_time;
+            const elapsed_s = @as(f64, @floatFromInt(elapsed_ns)) / 1e9;
+            try printBytesLine(stderr_writer, stats.bytes, elapsed_s);
         }
     }
+}
+
+// Format a float the way coreutils does: 1 decimal place if < 10, else integer.
+fn fmtHuman(v: f64, buf: []u8) []const u8 {
+    if (v < 10.0) {
+        return std.fmt.bufPrint(buf, "{d:.1}", .{v}) catch buf[0..0];
+    } else {
+        return std.fmt.bufPrint(buf, "{d:.0}", .{@round(v)}) catch buf[0..0];
+    }
+}
+
+// Print the "N bytes (...) copied, T s, R unit/s" line matching coreutils dd output.
+fn printBytesLine(w: anytype, bytes: u64, elapsed_s: f64) !void {
+    const b = @as(f64, @floatFromInt(bytes));
+    var buf1: [32]u8 = undefined;
+    var buf2: [32]u8 = undefined;
+    var buf3: [32]u8 = undefined;
+
+    // Transfer rate
+    const rate = if (elapsed_s > 0.0) b / elapsed_s else 0.0;
+    const rate_str: []const u8 = blk: {
+        if (rate >= 1e12) break :blk try std.fmt.bufPrint(&buf3, "{s} TB/s", .{fmtHuman(rate / 1e12, &buf1)});
+        if (rate >= 1e9)  break :blk try std.fmt.bufPrint(&buf3, "{s} GB/s", .{fmtHuman(rate / 1e9,  &buf1)});
+        if (rate >= 1e6)  break :blk try std.fmt.bufPrint(&buf3, "{s} MB/s", .{fmtHuman(rate / 1e6,  &buf1)});
+        if (rate >= 1e3)  break :blk try std.fmt.bufPrint(&buf3, "{s} kB/s", .{fmtHuman(rate / 1e3,  &buf1)});
+        break :blk try std.fmt.bufPrint(&buf3, "{s} B/s", .{fmtHuman(rate, &buf1)});
+    };
+
+    if (bytes < 1000) {
+        // No SI/IEC annotation for small transfers
+        try w.print("{d} bytes copied, {d} s, {s}\n", .{ bytes, elapsed_s, rate_str });
+        return;
+    }
+
+    // SI suffix (powers of 1000)
+    const si_str: []const u8 = blk: {
+        if (b >= 1e12) break :blk try std.fmt.bufPrint(&buf1, "{s} TB", .{fmtHuman(b / 1e12, &buf2)});
+        if (b >= 1e9)  break :blk try std.fmt.bufPrint(&buf1, "{s} GB", .{fmtHuman(b / 1e9,  &buf2)});
+        if (b >= 1e6)  break :blk try std.fmt.bufPrint(&buf1, "{s} MB", .{fmtHuman(b / 1e6,  &buf2)});
+        break :blk try std.fmt.bufPrint(&buf1, "{s} kB", .{fmtHuman(b / 1e3, &buf2)});
+    };
+
+    if (bytes < 1024) {
+        // Too small for a KiB annotation
+        try w.print("{d} bytes ({s}) copied, {d} s, {s}\n", .{ bytes, si_str, elapsed_s, rate_str });
+        return;
+    }
+
+    // IEC suffix (powers of 1024)
+    const iec_str: []const u8 = blk: {
+        if (b >= 1024.0 * 1024.0 * 1024.0 * 1024.0) break :blk try std.fmt.bufPrint(&buf2, "{s} TiB", .{fmtHuman(b / (1024.0*1024.0*1024.0*1024.0), &buf3)});
+        if (b >= 1024.0 * 1024.0 * 1024.0)           break :blk try std.fmt.bufPrint(&buf2, "{s} GiB", .{fmtHuman(b / (1024.0*1024.0*1024.0),           &buf3)});
+        if (b >= 1024.0 * 1024.0)                     break :blk try std.fmt.bufPrint(&buf2, "{s} MiB", .{fmtHuman(b / (1024.0*1024.0),                   &buf3)});
+        break :blk try std.fmt.bufPrint(&buf2, "{s} KiB", .{fmtHuman(b / 1024.0, &buf3)});
+    };
+
+    try w.print("{d} bytes ({s}, {s}) copied, {d} s, {s}\n",
+        .{ bytes, si_str, iec_str, elapsed_s, rate_str });
 }
 
 // Write a cbs-wide block record, tracking full/partial at obs granularity
