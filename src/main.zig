@@ -459,7 +459,7 @@ pub fn main() !void {
         const st = posix.fstat(in_file.handle) catch null;
         if (st) |s| {
             if (s.nlink > 1) {
-                try stderr_writer.writeAll("zz: input: has too many links\n");
+                try stderr_writer.print("zz: '{s}': has too many links\n", .{params.if_path orelse "stdin"});
                 std.process.exit(1);
             }
         }
@@ -587,12 +587,20 @@ pub fn main() !void {
             var nread: usize = 0;
             if (params.iflag.fullblock) {
                 while (nread < want) {
-                    const n = in_file.read(ibuf[nread..want]) catch break;
+                    const n = in_file.read(ibuf[nread..want]) catch |err| {
+                        if (nread == 0) {
+                            try stderr_writer.print("zz: read error reading from '{s}': {s}\n", .{ params.if_path orelse "stdin", @errorName(err) });
+                        }
+                        break;
+                    };
                     if (n == 0) break;
                     nread += n;
                 }
             } else {
-                nread = in_file.read(ibuf[0..want]) catch 0;
+                nread = in_file.read(ibuf[0..want]) catch |err| blk: {
+                    try stderr_writer.print("zz: read error reading from '{s}': {s}\n", .{ params.if_path orelse "stdin", @errorName(err) });
+                    break :blk 0;
+                };
             }
             if (nread == 0) break;
 
@@ -674,7 +682,7 @@ pub fn main() !void {
                     const end = @min(pos + @as(usize, @intCast(obs)), block_data.len);
                     const chunk = block_data[pos..end];
                     out_file.writeAll(chunk) catch |err| {
-                        try stderr_writer.print("zz: write error: {s}\n", .{@errorName(err)});
+                        try stderr_writer.print("zz: write error writing to '{s}': {s}\n", .{ params.of_path orelse "stdout", @errorName(err) });
                         std.process.exit(1);
                     };
                     if (chunk.len == obs) stats.out_full += 1 else stats.out_partial += 1;
@@ -691,7 +699,7 @@ pub fn main() !void {
                     src_pos += to_copy;
                     if (obuf_len == @as(usize, @intCast(obs))) {
                         out_file.writeAll(obuf[0..obuf_len]) catch |err| {
-                            try stderr_writer.print("zz: write error: {s}\n", .{@errorName(err)});
+                            try stderr_writer.print("zz: write error writing to '{s}': {s}\n", .{ params.of_path orelse "stdout", @errorName(err) });
                             std.process.exit(1);
                         };
                         stats.out_full += 1;
@@ -726,7 +734,7 @@ pub fn main() !void {
         // Flush reblock buffer
         if (reblock and obuf_len > 0) {
             out_file.writeAll(obuf[0..obuf_len]) catch |err| {
-                try stderr_writer.print("zz: write error: {s}\n", .{@errorName(err)});
+                try stderr_writer.print("zz: write error writing to '{s}': {s}\n", .{ params.of_path orelse "stdout", @errorName(err) });
                 std.process.exit(1);
             };
             stats.out_partial += 1;
@@ -750,7 +758,9 @@ pub fn main() !void {
     }
 
     if (params.conv.fsync or params.conv.fdatasync) {
-        out_file.sync() catch {};
+        out_file.sync() catch |err| {
+            try stderr_writer.print("zz: warning: sync failed on '{s}': {s}\n", .{ params.of_path orelse "stdout", @errorName(err) });
+        };
     }
 
     if (params.status != .none) {
